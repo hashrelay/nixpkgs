@@ -7,6 +7,10 @@ let
 
   configFileName = "patroni-${cfg.scope}-${cfg.name}.yaml";
   configFile = format.generate configFileName cfg.settings;
+  configFileCheck = pkgs.runCommand "patroniconfigfile-check" {} ''
+    ${cfg.package}/bin/patroni --validate-config ${configFile}
+    touch $out
+  '';
 in
 {
   imports = [
@@ -21,6 +25,20 @@ in
   options.services.patroni = {
 
     enable = lib.mkEnableOption "Patroni";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.patroni;
+      description = ''
+        Patroni package to use.
+      '';
+    };
+
+    checkConfig = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Check the syntax of the configuration file at compile time";
+    };
 
     postgresqlPackage = lib.mkOption {
       type = lib.types.package;
@@ -159,6 +177,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+
+    system.checks = lib.optional (cfg.checkConfig && pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) configFileCheck;
 
     services.patroni.settings = {
       scope = cfg.scope;
