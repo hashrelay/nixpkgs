@@ -7,6 +7,18 @@ let
 
   configFileName = "patroni-${cfg.scope}-${cfg.name}.yaml";
   configFile = format.generate configFileName cfg.settings;
+  configFileCheck = pkgs.runCommand "patroniconfigfile-check" {} ''
+    ${cfg.package}/bin/patroni --validate-config ${configFile}
+    touch $out
+  '';
+  patroni-cli =
+    pkgs.runCommand "patronictl-wrapper" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+      ''
+        makeWrapper ${cfg.package}/bin/patronictl $out/bin/patroni-cli \
+          --add-flags "-c ${configFile}" \
+          ${lib.strings.concatStringsSep " " (lib.mapAttrsToList (k: v:
+            ''--set ${k} "$(< ${lib.escapeShellArg v})"'') cfg.environmentFiles)}
+      '';
 in
 {
   imports = [
@@ -21,6 +33,20 @@ in
   options.services.patroni = {
 
     enable = lib.mkEnableOption "Patroni";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.patroni;
+      description = ''
+        Patroni package to use.
+      '';
+    };
+
+    checkConfig = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Check the syntax of the configuration file at compile time";
+    };
 
     postgresqlPackage = lib.mkOption {
       type = lib.types.package;
@@ -160,6 +186,8 @@ in
 
   config = lib.mkIf cfg.enable {
 
+    system.checks = lib.optional (cfg.checkConfig && pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) configFileCheck;
+
     services.patroni.settings = {
       scope = cfg.scope;
       name = cfg.name;
@@ -237,6 +265,7 @@ in
     environment.systemPackages = [
       pkgs.patroni
       cfg.postgresqlPackage
+      patroni-cli
     ];
 
     environment.etc."${configFileName}".source = configFile;
