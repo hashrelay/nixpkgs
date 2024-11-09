@@ -498,6 +498,9 @@ in
           exec ${pkgs.patroni}/bin/patroni ${configFile}
         '';
 
+        path = [
+          cfg.postgresqlPackage
+        ];
         serviceConfig = lib.mkMerge [
           {
             User = cfg.user;
